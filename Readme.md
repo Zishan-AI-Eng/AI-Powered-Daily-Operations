@@ -59,7 +59,7 @@ CRM Provider (HubSpot)
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/yourusername/ai-operations-integrator.git
+git clone https://github.com/Zishan-AI-Eng/AI-Powered-Daily-Operationsgit
 cd ai-operations-integrator
 ```
 
