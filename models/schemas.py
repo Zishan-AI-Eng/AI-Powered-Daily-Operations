@@ -2,6 +2,7 @@ from pydantic import BaseModel , Field
 from typing import Optional , TypedDict
 
 class Candidates(BaseModel):
+    id: str = Field(..., description="Unique HubSpot ID of the candidate - MANDATORY")
     name: str = Field(..., description="Name of the candidate")
     email: Optional[str] = Field(None, description="Email of the candidate")
     phone_number: Optional[str] = Field(None, description="Phone number of the candidate")
@@ -12,6 +13,7 @@ class Candidates(BaseModel):
     last_activity_date: Optional[str] = Field(None, description="Last activity date of the candidate")
     
 class Companies(BaseModel):
+    
     name: str = Field(..., description="Name of the company")
     owner: Optional[str] = Field(None, description="Owner of the company")
     phone_number: Optional[str] = Field(None, description="Phone number of the company")
