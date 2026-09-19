@@ -1,12 +1,12 @@
 import requests 
 from dotenv import load_dotenv
 import os 
-
-
 from models.schemas import Candidates, Companies, JobDeal, NormalizedCRMData
+from utils.logger import get_logger
 
 load_dotenv()  # Load environment variables from .env file
 
+logger = get_logger(__name__)
 
 HUBSPOT_API_KEY = os.getenv("HUBSPOT_API_KEY")
 headers ={
@@ -87,9 +87,33 @@ def fetch_raw_deals():
         print(f"Deals Fetch Error: {e}")
         return {}
     
+
+
+def update_hubspot_contact(contact_id: str, properties: dict) -> bool:
+    """HubSpot API ko PATCH request bhej kar contact update karta hai."""
     
+    url = f"https://api.hubapi.com/crm/v3/objects/contacts/{contact_id}"
+    headers = {
+        "Authorization": f"Bearer {HUBSPOT_API_KEY}",
+        "Content-Type": "application/json"
+    }
     
-    # Testing ke liye script run karein
-if __name__ == "__main__":
-    clean_data = fetch_and_normalize_crm_data()
-    print(clean_data.model_dump_json(indent=2)) # Pydantic model ko JSON format me print karein
+    # HubSpot API properties ko ek specific JSON format mein mangta hai
+    payload = {
+        "properties": properties
+    }
+    
+    try:
+        logger.debug(f"Sending PATCH request to HubSpot for Contact ID: {contact_id}")
+        response = requests.patch(url, headers=headers, json=payload)
+        
+        if response.status_code == 200:
+            logger.info(f"Successfully updated Contact ID {contact_id} in HubSpot.")
+            return True
+        else:
+            logger.error(f"HubSpot API Error: {response.status_code} - {response.text}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Exception during HubSpot API call: {e}")
+        return False
