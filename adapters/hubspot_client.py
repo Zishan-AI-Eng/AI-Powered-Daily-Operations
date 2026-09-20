@@ -1,6 +1,6 @@
-import requests 
+import requests
 from dotenv import load_dotenv
-import os 
+import os
 from models.schemas import Candidates, Companies, JobDeal, NormalizedCRMData
 from utils.logger import get_logger
 
@@ -9,7 +9,7 @@ load_dotenv()  # Load environment variables from .env file
 logger = get_logger(__name__)
 
 HUBSPOT_API_KEY = os.getenv("HUBSPOT_API_KEY")
-headers ={
+headers = {
     "Authorization": f"Bearer {HUBSPOT_API_KEY}",
     'Content-Type': 'application/json'
 }
@@ -33,6 +33,7 @@ def fetch_and_normalize_crm_data() -> NormalizedCRMData:
             full_name = "Unknown Name"
             
         candidate_obj = Candidates(
+            id=contact.get('id', ''),
             name=full_name,
             email=props.get('email'),
             phone_number=props.get('phone'),
@@ -71,8 +72,8 @@ def fetch_raw_contacts():
         response.raise_for_status()  # Raise an error for bad responses
         return response.json()
     except requests.exceptions.RequestException as e:
-        print(f"Contacts Fetch Error: {e}")
-        return {}
+        logger.error("Contacts fetch failed: %s", e)
+        return {"results": []}
     
     
     
@@ -84,8 +85,8 @@ def fetch_raw_deals():
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
-        print(f"Deals Fetch Error: {e}")
-        return {}
+        logger.error("Deals fetch failed: %s", e)
+        return {"results": []}
     
 
 
@@ -105,7 +106,7 @@ def update_hubspot_contact(contact_id: str, properties: dict) -> bool:
     
     try:
         logger.debug(f"Sending PATCH request to HubSpot for Contact ID: {contact_id}")
-        response = requests.patch(url, headers=headers, json=payload)
+        response = requests.patch(url, headers=headers, json=payload, timeout=30)
         
         if response.status_code == 200:
             logger.info(f"Successfully updated Contact ID {contact_id} in HubSpot.")
@@ -116,4 +117,22 @@ def update_hubspot_contact(contact_id: str, properties: dict) -> bool:
             
     except Exception as e:
         logger.error(f"Exception during HubSpot API call: {e}")
+        return False
+
+
+def update_hubspot_deal(deal_id: str, properties: dict) -> bool:
+    """Update a HubSpot deal and return whether the provider accepted it."""
+    url = f"https://api.hubapi.com/crm/v3/objects/deals/{deal_id}"
+    payload = {"properties": properties}
+
+    try:
+        logger.debug("Sending PATCH request to HubSpot for Deal ID: %s", deal_id)
+        response = requests.patch(url, headers=headers, json=payload, timeout=30)
+        if response.status_code == 200:
+            logger.info("Successfully updated Deal ID %s in HubSpot.", deal_id)
+            return True
+        logger.error("HubSpot deal update failed: %s - %s", response.status_code, response.text)
+        return False
+    except requests.exceptions.RequestException as exc:
+        logger.error("Exception during HubSpot deal update: %s", exc)
         return False
