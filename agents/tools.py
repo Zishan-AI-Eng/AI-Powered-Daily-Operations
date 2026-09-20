@@ -5,7 +5,14 @@ from datetime import datetime, timezone
 from langchain_core.tools import tool
 from pydantic import BaseModel, ConfigDict, Field
 from utils.logger import get_logger
-from adapters.hubspot_client import update_hubspot_contact, update_hubspot_deal
+from adapters.hubspot_client import (
+    list_hubspot_companies as fetch_hubspot_companies,
+    list_hubspot_contacts as fetch_hubspot_contacts,
+    list_hubspot_deals as fetch_hubspot_deals,
+    list_hubspot_tasks as fetch_hubspot_tasks,
+    update_hubspot_contact,
+    update_hubspot_deal,
+)
 
 # Centralized logger initialize karein
 logger = get_logger(__name__)
@@ -70,6 +77,42 @@ class DealUpdateInput(BaseModel):
     job_id: str = Field(..., min_length=1)
     update_fields: dict[str, str | None] = Field(..., min_length=1)
 
+
+class ContactListInput(BaseModel):
+    """Arguments for listing or searching HubSpot contacts."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    limit: int = Field(default=10, ge=1, le=100)
+    query: str | None = Field(default=None, min_length=1, max_length=100)
+
+
+class CompanyListInput(BaseModel):
+    """Arguments for listing or searching HubSpot companies."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    limit: int = Field(default=10, ge=1, le=100)
+    query: str | None = Field(default=None, min_length=1, max_length=100)
+
+
+class DealListInput(BaseModel):
+    """Arguments for listing or searching HubSpot deals."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    limit: int = Field(default=10, ge=1, le=100)
+    query: str | None = Field(default=None, min_length=1, max_length=100)
+
+
+class TaskListInput(BaseModel):
+    """Arguments for listing or searching HubSpot tasks."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    limit: int = Field(default=10, ge=1, le=100)
+    query: str | None = Field(default=None, min_length=1, max_length=100)
+
 @tool(args_schema=ContactUpdateInput)
 def update_crm_contact(contact_id: str, update_fields: dict) -> str:
     """
@@ -127,6 +170,51 @@ def update_job_deal(job_id: str, update_fields: dict) -> str:
     except Exception as e:
         logger.error(f"Exception occurred while executing update_job_deal tool: {e}")
         return f"ERROR: An exception occurred during Job update."
+
+
+@tool(args_schema=ContactListInput)
+def list_hubspot_contacts(limit: int = 10, query: str | None = None) -> str:
+    """List compact HubSpot contacts, optionally filtered by a search query.
+
+    Use this tool when the user asks to list, show, or find candidates/contacts.
+    The result contains only high-value fields and is safe to pass to the agent.
+    """
+    logger.info("Fetching HubSpot contacts: limit=%s query_present=%s", limit, bool(query))
+    result = fetch_hubspot_contacts(limit=limit, query=query)
+    return result if isinstance(result, str) else json.dumps(result)
+
+
+@tool(args_schema=CompanyListInput)
+def list_hubspot_companies(limit: int = 10, query: str | None = None) -> str:
+    """List compact HubSpot companies, optionally filtered by a search query.
+
+    Use this tool when the user asks to list, show, or find companies.
+    """
+    logger.info("Fetching HubSpot companies: limit=%s query_present=%s", limit, bool(query))
+    result = fetch_hubspot_companies(limit=limit, query=query)
+    return result if isinstance(result, str) else json.dumps(result)
+
+
+@tool(args_schema=DealListInput)
+def list_hubspot_deals(limit: int = 10, query: str | None = None) -> str:
+    """List compact HubSpot deals/jobs, optionally filtered by a search query.
+
+    Use this tool when the user asks to list, show, or find jobs or deals.
+    """
+    logger.info("Fetching HubSpot deals: limit=%s query_present=%s", limit, bool(query))
+    result = fetch_hubspot_deals(limit=limit, query=query)
+    return result if isinstance(result, str) else json.dumps(result)
+
+
+@tool(args_schema=TaskListInput)
+def list_hubspot_tasks(limit: int = 10, query: str | None = None) -> str:
+    """List compact HubSpot tasks, optionally filtered by a search query.
+
+    Use this tool when the user asks to list, show, or find CRM tasks.
+    """
+    logger.info("Fetching HubSpot tasks: limit=%s query_present=%s", limit, bool(query))
+    result = fetch_hubspot_tasks(limit=limit, query=query)
+    return result if isinstance(result, str) else json.dumps(result)
 
 
 @tool(args_schema=SendEmailInput)
@@ -230,6 +318,10 @@ def create_crm_task(
 crm_tools = [
     update_crm_contact,
     update_job_deal,
+    list_hubspot_contacts,
+    list_hubspot_companies,
+    list_hubspot_deals,
+    list_hubspot_tasks,
     send_email,
     schedule_meeting,
     create_crm_task,
