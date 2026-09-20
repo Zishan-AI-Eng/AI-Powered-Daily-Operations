@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from langchain_core.tools import tool
 from pydantic import BaseModel, ConfigDict, Field
 from utils.logger import get_logger
-from adapters.hubspot_client import update_hubspot_contact
+from adapters.hubspot_client import update_hubspot_contact, update_hubspot_deal
 
 # Centralized logger initialize karein
 logger = get_logger(__name__)
@@ -52,7 +52,25 @@ class CreateCRMTaskInput(BaseModel):
     related_contact_id: str | None = Field(default=None)
     related_deal_id: str | None = Field(default=None)
 
-@tool
+
+class ContactUpdateInput(BaseModel):
+    """Validated arguments for a CRM record mutation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    contact_id: str = Field(..., min_length=1)
+    update_fields: dict[str, str | None] = Field(..., min_length=1)
+
+
+class DealUpdateInput(BaseModel):
+    """Validated arguments for a HubSpot deal mutation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: str = Field(..., min_length=1)
+    update_fields: dict[str, str | None] = Field(..., min_length=1)
+
+@tool(args_schema=ContactUpdateInput)
 def update_crm_contact(contact_id: str, update_fields: dict) -> str:
     """
     Use this tool to update ANY information for a contact/candidate in the HubSpot CRM.
@@ -83,7 +101,7 @@ def update_crm_contact(contact_id: str, update_fields: dict) -> str:
         logger.error(f"Exception occurred while executing update_crm_contact tool: {e}")
         return f"ERROR: An exception occurred during CRM update."
 
-@tool
+@tool(args_schema=DealUpdateInput)
 def update_job_deal(job_id: str, update_fields: dict) -> str:
     """
     Use this tool to update ANY information for a job/deal (dealstage, amount, etc.) in the HubSpot CRM.
@@ -100,11 +118,11 @@ def update_job_deal(job_id: str, update_fields: dict) -> str:
         return "ERROR: Job ID is required to perform an update."
 
     try:
-        # Yahan job/deal update karne ka logic aayega (similar to contact update)
-        logger.debug(f"Executing HubSpot Deal update for ID: {job_id}")
-        
-        # Filhal mock success return kar rahe hain jab tak deal update function na banayein
-        return f"SUCCESS: Job ID '{job_id}' updated successfully with {update_fields}."
+        success = update_hubspot_deal(deal_id=job_id, properties=update_fields)
+        if success:
+            logger.info("Successfully updated Job ID '%s' in HubSpot.", job_id)
+            return f"SUCCESS: Job ID '{job_id}' updated successfully with {update_fields}."
+        return f"ERROR: Failed to update Job ID '{job_id}' in CRM."
         
     except Exception as e:
         logger.error(f"Exception occurred while executing update_job_deal tool: {e}")
