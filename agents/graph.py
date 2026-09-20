@@ -1,12 +1,12 @@
 import os 
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.graph import StateGraph, START ,END , MessagesState
-from langchain.messages import SystemMessage, HumanMessage
+from langchain.messages import SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from utils.logger import get_logger
-from typing import TypedDict
 from agents.tools import crm_tools
 
 
@@ -18,7 +18,7 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 
 llm = ChatGoogleGenerativeAI(
-    model='gemini-3.5-flash',
+    model='gemini-2.5-flash',
     api_key=GOOGLE_API_KEY,
     temperature=0.2
     )
@@ -27,6 +27,41 @@ llm = ChatGoogleGenerativeAI(
 
 
 llm_with_tools = llm.bind_tools(crm_tools)  # Bind the CRM tools to the LLM
+memory = MemorySaver()
+
+
+AGENT_SYSTEM_PROMPT = """
+You are the autonomous daily-operations agent for a recruitment agency. Read the
+complete conversation and any source email before acting. Your job is to decide
+which operational actions are explicitly requested and execute only those actions.
+
+Available actions:
+- update_crm_contact: update a known HubSpot contact by contact ID.
+- update_job_deal: update a known HubSpot deal by deal ID.
+- send_email: send a contextual email to specified recipients.
+- schedule_meeting: schedule a meeting when title, attendees, and valid start/end
+  times are available.
+- create_crm_task: create a follow-up task when a title, due time, and assignee ID
+  are available.
+
+Operational policy:
+1. Extract the requested outcomes, target records, recipients, dates, and dependencies.
+2. Select the minimum set of tools needed. A tool call is justified only by an
+    explicit request or an unavoidable dependency of an explicit request.
+3. Chain tools when the request contains multiple outcomes. For example, "update
+    the CRM, notify the candidate, and remind me next week" means update the CRM,
+    then send the email, then create the task.
+4. Do not send an email after a CRM update unless sending it was requested.
+    Do not create a task or meeting unless requested.
+5. Never invent contact IDs, deal IDs, recipient addresses, assignee IDs, or times.
+    Ask for missing required values instead of calling a tool with guesses.
+6. Respect dependencies and use the result of an earlier tool call when it is
+    needed by a later action. If a tool returns an error, stop dependent actions,
+    explain the failure, and do not claim success.
+7. After all requested actions finish, give a concise factual outcome. Do not
+    expose hidden chain-of-thought; provide only a short action summary and any
+    missing information or errors.
+"""
 
 
 def agent_node(state: MessagesState):
@@ -35,7 +70,8 @@ def agent_node(state: MessagesState):
     """
     
     logger.info("Agent Node Invoked: Processing messages through the LLM with tools.")
-    response = llm_with_tools.invoke(state['messages'])
+    messages = [SystemMessage(content=AGENT_SYSTEM_PROMPT), *state['messages']]
+    response = llm_with_tools.invoke(messages)
     
     return {'messages': [response]}
 
@@ -58,7 +94,7 @@ def agent_graph():
     )
     workflow.add_edge("tools", "agent")
 
-    crm_agent_graph = workflow.compile()
+    crm_agent_graph = workflow.compile(checkpointer=memory)
     
     return crm_agent_graph
 
