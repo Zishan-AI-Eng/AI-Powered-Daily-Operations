@@ -11,13 +11,6 @@ load_dotenv()  # Load environment variables from .env file
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
-# llm = ChatGoogleGenerativeAI(
-#     model='gemini-25-flash',
-#     api_key=GOOGLE_API_KEY,
-#     temperature=0.2
-#     ).bind(response_format={'type':'json_object'})
-
-
 
 llm = ChatGroq(
     model='openai/gpt-oss-20b',
@@ -66,36 +59,3 @@ def generate_daily_brief(crm_data, email_draft):
     })
 
     return response
-
-
-import json
-
-# --- TESTING BLOCK ---
-if __name__ == "__main__":
-    # 1. Dummy CRM Data (Jo Pydantic se aayega)
-    dummy_crm_data = {
-        "candidates": [
-            {"name": "AYAN MARWAT", "email": "marwtatking2@gmail.com", "phone_number": None},
-            {"name": "ATIF KING", "email": "marwtatking1@gmail.com", "phone_number": None}
-        ],
-        "jobs": [
-            {"id": "348860320482", "job_title": "FIRST CLIENT", "stage": "appointmentscheduled"}
-        ]
-    }
-
-    # 2. Dummy Email Data
-    dummy_email_draft = """
-    Email 1: Hi Hasan, please update Ayan Marwat's phone number to 0300-1234567.
-    Email 2: Atif King's interview for FIRST CLIENT is confirmed for tomorrow.
-    """
-
-    print("Groq AI is analyzing data... Please wait.\n")
-    
-    # 3. Function ko call karein aur dictionaries ko string/JSON format mein pass karein
-    result = generate_daily_brief(
-        crm_data=json.dumps(dummy_crm_data, indent=2), 
-        email_draft=dummy_email_draft
-    )
-    
-    print("--- AI DAILY BRIEF (JSON OUTPUT) ---")
-    print(result)
