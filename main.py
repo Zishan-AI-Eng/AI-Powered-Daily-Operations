@@ -1,10 +1,10 @@
 import os
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Generic, TypeVar
 from uuid import uuid4
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Path, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -12,6 +12,12 @@ from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
 from agents.graph import agent_graph
+from adapters.hubspot_client import (
+	fetch_explorer_candidate,
+	fetch_explorer_candidates,
+	fetch_explorer_companies,
+	fetch_explorer_deals,
+)
 from utils.logger import get_logger
 
 
@@ -103,6 +109,54 @@ class HistoryResponse(BaseModel):
 	thread_id: str
 	messages: list[HistoryMessage]
 	count: int
+
+
+class CandidateExplorerItem(BaseModel):
+	id: str | None
+	firstname: str | None
+	lastname: str | None
+	email: str | None
+	phone: str | None
+	hs_lead_status: str | None
+	hubspot_owner_id: str | None
+
+
+class CompanyExplorerItem(BaseModel):
+	id: str | None
+	name: str | None
+	domain: str | None
+	industry: str | None
+	city: str | None
+	phone: str | None
+	hubspot_owner_id: str | None
+
+
+class DealExplorerItem(BaseModel):
+	id: str | None
+	dealname: str | None
+	amount: str | None
+	dealstage: str | None
+	closedate: str | None
+	hubspot_owner_id: str | None
+
+
+ExplorerItem = TypeVar("ExplorerItem")
+
+
+class ExplorerPage(BaseModel, Generic[ExplorerItem]):
+	items: list[ExplorerItem]
+	total: int
+	page: int
+	limit: int
+
+
+def _raise_hubspot_error(result: Any, resource: str) -> None:
+	"""Translate an adapter error string into an appropriate API response."""
+	if not isinstance(result, str):
+		return
+	status_code = 404 if "not found" in result.lower() else 502
+	logger.error("HubSpot %s explorer request returned an error: %s", resource, result)
+	raise HTTPException(status_code=status_code, detail={"error": result, "resource": resource})
 
 
 def _message_content_to_text(content: Any) -> str:
@@ -208,6 +262,58 @@ def thread_history(thread_id: str, limit: int = 100) -> HistoryResponse:
 	except Exception as exc:
 		logger.exception("Thread history lookup failed: thread_id=%s", thread_id)
 		raise HTTPException(status_code=500, detail="Unable to retrieve thread history") from exc
+
+
+@app.get("/api/candidates", response_model=ExplorerPage[CandidateExplorerItem])
+def get_candidates(
+	search: str | None = Query(default=None, min_length=1, max_length=100),
+	page: int = Query(default=1, ge=1, le=10000),
+	limit: int = Query(default=25, ge=1, le=100),
+) -> ExplorerPage[CandidateExplorerItem]:
+	"""Return paginated live candidate data from HubSpot."""
+	result = fetch_explorer_candidates(page=page, limit=limit, search=search)
+	_raise_hubspot_error(result, "candidates")
+	return ExplorerPage[CandidateExplorerItem](
+		items=result["items"], total=result["total"], page=page, limit=limit
+	)
+
+
+@app.get("/api/candidates/{candidate_id}", response_model=CandidateExplorerItem)
+def get_candidate(
+	candidate_id: str = Path(..., min_length=1, max_length=100),
+) -> CandidateExplorerItem:
+	"""Return one live candidate from HubSpot by contact ID."""
+	result = fetch_explorer_candidate(candidate_id)
+	_raise_hubspot_error(result, "candidate")
+	return CandidateExplorerItem.model_validate(result)
+
+
+@app.get("/api/companies", response_model=ExplorerPage[CompanyExplorerItem])
+def get_companies(
+	search: str | None = Query(default=None, min_length=1, max_length=100),
+	page: int = Query(default=1, ge=1, le=10000),
+	limit: int = Query(default=25, ge=1, le=100),
+) -> ExplorerPage[CompanyExplorerItem]:
+	"""Return paginated live company data from HubSpot."""
+	result = fetch_explorer_companies(page=page, limit=limit, search=search)
+	_raise_hubspot_error(result, "companies")
+	return ExplorerPage[CompanyExplorerItem](
+		items=result["items"], total=result["total"], page=page, limit=limit
+	)
+
+
+@app.get("/api/deals", response_model=ExplorerPage[DealExplorerItem])
+def get_deals(
+	stage: str | None = Query(default=None, min_length=1, max_length=100),
+	page: int = Query(default=1, ge=1, le=10000),
+	limit: int = Query(default=25, ge=1, le=100),
+) -> ExplorerPage[DealExplorerItem]:
+	"""Return paginated live deal data from HubSpot."""
+	result = fetch_explorer_deals(page=page, limit=limit, stage=stage)
+	_raise_hubspot_error(result, "deals")
+	return ExplorerPage[DealExplorerItem](
+		items=result["items"], total=result["total"], page=page, limit=limit
+	)
 
 
 if __name__ == "__main__":
